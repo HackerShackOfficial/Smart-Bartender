@@ -1,0 +1,32 @@
+{
+	"pump_1": {
+		"name": "Pump 1",
+		"pin": 1, 
+		"value": "gin"
+	},
+	"pump_2": {
+		"name": "Pump 2",
+		"pin": 2, 
+		"value": "tonic"
+	},
+	"pump_3": {
+		"name": "Pump 3",
+		"pin": 3, 
+		"value": null
+	},
+	"pump_4": {
+		"name": "Pump 4",
+		"pin": 3, 
+		"value": null
+	},
+	"pump_5": {
+		"name": "Pump 5",
+		"pin": 3, 
+		"value": null
+	},
+	"pump_6": {
+		"name": "Pump 6",
+		"pin": 3, 
+		"value": null
+	}
+}
