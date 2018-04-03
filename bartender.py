@@ -5,20 +5,22 @@ import time
 import sys
 import RPi.GPIO as GPIO
 import json
+from dotstar import Adafruit_DotStar
+import threading
 GPIO.setmode(GPIO.BCM)
 
 drink_list = [
 	{
 		"name": "Rum & Coke",
 		"ingredients": {
-			"rum": 200,
-			"coke": 600
+			"rum": 50,
+			"coke": 150
 		}
 	}, {
 		"name": "Gin & Tonic",
 		"ingredients": {
-			"gin": 200,
-			"tonic": 600
+			"gin": 50,
+			"tonic": 150
 		}
 	}
 ]
@@ -29,6 +31,7 @@ drink_options = [
 	{"name": "Tonic Water", "value": "tonic"}
 ]
 
+flow_rate = 60.0/100.0
 
 class MenuItem(object):
 	def __init__(self, type, name, attributes = None, visible = True):
@@ -163,23 +166,19 @@ class Bartender(MenuDelegate):
 	def __init__(self):
 		# load the pump configuration from file
 		self.pump_configuration = Bartender.readPumpConfiguration()
+		for pump in self.pump_configuration.keys():
+			GPIO.setup(self.pump_configuration[pump]["pin"], GPIO.OUT, initial=GPIO.HIGH)
+
 		# set the oled screen height
 		self.screen_width = 128
 		self.screen_height = 64
-		# GPIO 23 & 17 set up as inputs, pulled up to avoid false detection.  
-		# Both ports are wired to connect to GND on button press.  
-		# So we'll be setting up falling edge detection for both  
-		GPIO.setup(5, GPIO.IN, pull_up_down=GPIO.PUD_UP)  
-		GPIO.setup(13, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
-		# when a falling edge is detected on port 17, regardless of whatever   
-		# else is happening in the program, the function my_callback will be run  
-		GPIO.add_event_detect(13, GPIO.FALLING, callback=self.left_btn, bouncetime=1000)  
-		  
-		# when a falling edge is detected on port 23, regardless of whatever   
-		# else is happening in the program, the function my_callback2 will be run  
-		# 'bouncetime=300' includes the bounce control written into interrupts2a.py  
-		GPIO.add_event_detect(5, GPIO.FALLING, callback=self.right_btn, bouncetime=2000)  
+		self.btn1Pin = 13
+		self.btn2Pin = 5
+	 
+	 	# configure interrups for buttons
+	 	GPIO.setup(self.btn1Pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+		GPIO.setup(self.btn2Pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)  
 
 		# Define which GPIO pins the reset (RST) and DC signals on the OLED display are connected to on the
 		# Raspberry Pi. The defined pin numbers must use the WiringPi pin numbering scheme.
@@ -201,6 +200,21 @@ class Bartender(MenuDelegate):
 		self.led.normal_display()
 		time.sleep(0.5)
 
+		# setup pixels:
+		self.numpixels = 45 # Number of LEDs in strip
+
+		# Here's how to control the strip from any two GPIO pins:
+		datapin  = 26
+		clockpin = 6
+		self.strip    = Adafruit_DotStar(self.numpixels, datapin, clockpin)
+		self.strip.begin()           # Initialize pins for output
+		self.strip.setBrightness(64) # Limit brightness to ~1/4 duty cycle
+
+		# turn everything off
+		for i in range(0, self.numpixels):
+			self.strip.setPixelColor(i, 0)
+		self.strip.show() 
+
 	@staticmethod
 	def readPumpConfiguration():
 		return json.load(open('pump_config.json'))
@@ -209,6 +223,14 @@ class Bartender(MenuDelegate):
 	def writePumpConfiguration(configuration):
 		with open("pump_config.json", "w") as jsonFile:
 			json.dump(configuration, jsonFile)
+
+	def startInterrupts(self):
+		GPIO.add_event_detect(self.btn1Pin, GPIO.FALLING, callback=self.left_btn, bouncetime=1000)  
+		GPIO.add_event_detect(self.btn2Pin, GPIO.FALLING, callback=self.right_btn, bouncetime=2000)  
+
+	def stopInterrupts(self):
+		GPIO.remove_event_detect(self.btn1Pin)
+		GPIO.remove_event_detect(self.btn2Pin)
 
 	def buildMenu(self, drink_list, drink_options):
 		# create a new main menu
@@ -295,17 +317,99 @@ class Bartender(MenuDelegate):
 
 	def displayMenuItem(self, menuItem):
 		self.led.clear_display()
-		self.led.draw_text2(0,0,menuItem.name,1)
+		self.led.draw_text2(0,20,menuItem.name,2)
 		self.led.display()
 
-	def makeDrink(self, drink, ingredients):
-		print drink
-		for x in range(0, 101):
+	def cycleLights(self):
+		t = threading.currentThread()
+		head  = 0               # Index of first 'on' pixel
+		tail  = -10             # Index of last 'off' pixel
+		color = 0xFF0000        # 'On' color (starts red)
+
+		while getattr(t, "do_run", True):
+			self.strip.setPixelColor(head, color) # Turn on 'head' pixel
+			self.strip.setPixelColor(tail, 0)     # Turn off 'tail'
+			self.strip.show()                     # Refresh strip
+			time.sleep(1.0 / 50)             # Pause 20 milliseconds (~50 fps)
+
+			head += 1                        # Advance head position
+			if(head >= self.numpixels):           # Off end of strip?
+				head    = 0              # Reset to start
+				color >>= 8              # Red->green->blue->black
+				if(color == 0): color = 0xFF0000 # If black, reset to red
+
+			tail += 1                        # Advance tail position
+			if(tail >= self.numpixels): tail = 0  # Off end? Reset
+
+	def lightsEndingSequence(self):
+		# make lights green
+		for i in range(0, self.numpixels):
+			self.strip.setPixelColor(i, 0xFF0000)
+		self.strip.show()
+
+		time.sleep(5)
+
+		# turn lights off
+		for i in range(0, self.numpixels):
+			self.strip.setPixelColor(i, 0)
+		self.strip.show() 
+
+	def pour(self, pin, waitTime):
+		GPIO.output(pin, GPIO.LOW)
+		time.sleep(waitTime)
+		GPIO.output(pin, GPIO.HIGH)
+
+	def progressBar(self, waitTime):
+		interval = waitTime / 100.0
+		for x in range(1, 101):
 			self.led.clear_display()
 			self.updateProgressBar(x, y=35)
 			self.led.display()
-			time.sleep(0.2)
+			time.sleep(interval)
+
+	def makeDrink(self, drink, ingredients):
+		# cancel any button presses while the drink is being made
+		self.stopInterrupts()
+
+		# launch a thread to control lighting
+		lightsThread = threading.Thread(target=self.cycleLights)
+		lightsThread.start()
+
+		# Parse the drink ingredients and spawn threads for pumps
+		maxTime = 0
+		pumpThreads = []
+		for ing in ingredients.keys():
+			for pump in self.pump_configuration.keys():
+				if ing == self.pump_configuration[pump]["value"]:
+					waitTime = ingredients[ing] * flow_rate
+					if (waitTime > maxTime):
+						maxTime = waitTime
+					pump_t = threading.Thread(target=self.pour, args=(self.pump_configuration[pump]["pin"], waitTime))
+					pumpThreads.append(pump_t)
+
+		# start the pump threads
+		for thread in pumpThreads:
+			thread.start()
+
+		# start the progress bar
+		self.progressBar(maxTime)
+
+		# wait for threads to finish
+		for thread in pumpThreads:
+			thread.join()
+
+		# show the main menut
 		self.menuContext.showMenu()
+
+		# stop the light thread
+		lightsThread.do_run = False
+		lightsThread.join()
+
+		# show the ending sequence lights
+		self.lightsEndingSequence()
+
+		# reenable interrupts
+		self.startInterrupts()
 
 	def left_btn(self, ctx):
 		self.menuContext.advance()
@@ -327,6 +431,7 @@ class Bartender(MenuDelegate):
 				self.led.draw_pixel(x + p_loc, h + y)
 
 	def run(self):
+		self.startInterrupts()
 		# main loop
 		try:  
 			while True:
