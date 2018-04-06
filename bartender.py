@@ -13,33 +13,46 @@ from drinks import drink_list, drink_options
 
 GPIO.setmode(GPIO.BCM)
 
-flow_rate = 60.0/100.0
+SCREEN_WIDTH = 128
+SCREEN_HEIGHT = 64
+
+LEFT_BTN_PIN = 13
+LEFT_PIN_BOUNCE = 1000
+
+RIGHT_BTN_PIN = 5
+RIGHT_PIN_BOUNCE = 2000
+
+OLED_RESET_PIN = 15
+OLED_DC_PIN = 16
+
+NUMBER_NEOPIXELS = 45
+NEOPIXEL_DATA_PIN = 26
+NEOPIXEL_CLOCK_PIN = 6
+NEOPIXEL_BRIGHTNESS = 64
+
+FLOW_RATE = 60.0/100.0
 
 class Bartender(MenuDelegate): 
 	def __init__(self):
 		# set the oled screen height
-		self.screen_width = 128
-		self.screen_height = 64
+		self.screen_width = SCREEN_WIDTH
+		self.screen_height = SCREEN_HEIGHT
 
-		self.btn1Pin = 13
-		self.btn2Pin = 5
+		self.btn1Pin = LEFT_BTN_PIN
+		self.btn2Pin = RIGHT_BTN_PIN
 	 
 	 	# configure interrups for buttons
 	 	GPIO.setup(self.btn1Pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 		GPIO.setup(self.btn2Pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)  
 
-		# Define which GPIO pins the reset (RST) and DC signals on the OLED display are connected to on the
-		# Raspberry Pi. The defined pin numbers must use the WiringPi pin numbering scheme.
-		RESET_PIN = 15 # WiringPi pin 15 is GPIO14.
-		DC_PIN = 16 # WiringPi pin 16 is GPIO15.
-
+		# configure screen
 		spi_bus = 0
 		spi_device = 0
 		gpio = gaugette.gpio.GPIO()
 		spi = gaugette.spi.SPI(spi_bus, spi_device)
 
 		# Very important... This lets py-gaugette 'know' what pins to use in order to reset the display
-		self.led = gaugette.ssd1306.SSD1306(gpio, spi, reset_pin=RESET_PIN, dc_pin=DC_PIN, rows=self.screen_height, cols=self.screen_width) # Change rows & cols values depending on your display dimensions.
+		self.led = gaugette.ssd1306.SSD1306(gpio, spi, reset_pin=OLED_RESET_PIN, dc_pin=OLED_DC_PIN, rows=self.screen_height, cols=self.screen_width) # Change rows & cols values depending on your display dimensions.
 		self.led.begin()
 		self.led.clear_display()
 		self.led.display()
@@ -54,14 +67,14 @@ class Bartender(MenuDelegate):
 			GPIO.setup(self.pump_configuration[pump]["pin"], GPIO.OUT, initial=GPIO.HIGH)
 
 		# setup pixels:
-		self.numpixels = 45 # Number of LEDs in strip
+		self.numpixels = NUMBER_NEOPIXELS # Number of LEDs in strip
 
 		# Here's how to control the strip from any two GPIO pins:
-		datapin  = 26
-		clockpin = 6
-		self.strip    = Adafruit_DotStar(self.numpixels, datapin, clockpin)
+		datapin  = NEOPIXEL_DATA_PIN
+		clockpin = NEOPIXEL_CLOCK_PIN
+		self.strip = Adafruit_DotStar(self.numpixels, datapin, clockpin)
 		self.strip.begin()           # Initialize pins for output
-		self.strip.setBrightness(64) # Limit brightness to ~1/4 duty cycle
+		self.strip.setBrightness(NEOPIXEL_BRIGHTNESS) # Limit brightness to ~1/4 duty cycle
 
 		# turn everything off
 		for i in range(0, self.numpixels):
@@ -80,8 +93,8 @@ class Bartender(MenuDelegate):
 			json.dump(configuration, jsonFile)
 
 	def startInterrupts(self):
-		GPIO.add_event_detect(self.btn1Pin, GPIO.FALLING, callback=self.left_btn, bouncetime=1000)  
-		GPIO.add_event_detect(self.btn2Pin, GPIO.FALLING, callback=self.right_btn, bouncetime=2000)  
+		GPIO.add_event_detect(self.btn1Pin, GPIO.FALLING, callback=self.left_btn, bouncetime=LEFT_PIN_BOUNCE)  
+		GPIO.add_event_detect(self.btn2Pin, GPIO.FALLING, callback=self.right_btn, bouncetime=RIGHT_PIN_BOUNCE)  
 
 	def stopInterrupts(self):
 		GPIO.remove_event_detect(self.btn1Pin)
@@ -237,7 +250,7 @@ class Bartender(MenuDelegate):
 		for ing in ingredients.keys():
 			for pump in self.pump_configuration.keys():
 				if ing == self.pump_configuration[pump]["value"]:
-					waitTime = ingredients[ing] * flow_rate
+					waitTime = ingredients[ing] * FLOW_RATE
 					if (waitTime > maxTime):
 						maxTime = waitTime
 					pump_t = threading.Thread(target=self.pour, args=(self.pump_configuration[pump]["pin"], waitTime))
