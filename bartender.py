@@ -129,6 +129,8 @@ class Bartender(MenuDelegate):
 		configuration_menu.addOptions(pump_opts)
 		# add a back button to the configuration menu
 		configuration_menu.addOption(Back("Back"))
+		# adds an option that cleans all pumps to the configuration menu
+		configuration_menu.addOption(MenuItem('clean', 'Clean'))
 		configuration_menu.setParent(m)
 
 		m.addOptions(drink_opts)
@@ -181,7 +183,38 @@ class Bartender(MenuDelegate):
 			self.pump_configuration[menuItem.attributes["key"]]["value"] = menuItem.attributes["value"]
 			Bartender.writePumpConfiguration(self.pump_configuration)
 			return True
+		elif(menuItem.type == "clean"):
+			self.clean()
+			return True
 		return False
+
+	def clean(self):
+		waitTime = 5
+		pumpThreads = []
+
+		# cancel any button presses while the drink is being made
+		self.stopInterrupts()
+
+		for pump in self.pump_configuration.keys():
+			pump_t = threading.Thread(target=self.pour, args=(self.pump_configuration[pump]["pin"], waitTime))
+			pumpThreads.append(pump_t)
+
+		# start the pump threads
+		for thread in pumpThreads:
+			thread.start()
+
+		# start the progress bar
+		self.progressBar(waitTime)
+
+		# wait for threads to finish
+		for thread in pumpThreads:
+			thread.join()
+
+		# show the main menu
+		self.menuContext.showMenu()
+
+		# reenable interrupts
+		self.startInterrupts()
 
 	def displayMenuItem(self, menuItem):
 		print menuItem.name
@@ -267,7 +300,7 @@ class Bartender(MenuDelegate):
 		for thread in pumpThreads:
 			thread.join()
 
-		# show the main menut
+		# show the main menu
 		self.menuContext.showMenu()
 
 		# stop the light thread
