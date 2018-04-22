@@ -6,6 +6,7 @@ import sys
 import RPi.GPIO as GPIO
 import json
 import threading
+import traceback
 
 from dotstar import Adafruit_DotStar
 from menu import MenuItem, Menu, Back, MenuContext, MenuDelegate
@@ -34,6 +35,8 @@ FLOW_RATE = 60.0/100.0
 
 class Bartender(MenuDelegate): 
 	def __init__(self):
+		self.running = False
+
 		# set the oled screen height
 		self.screen_width = SCREEN_WIDTH
 		self.screen_height = SCREEN_HEIGHT
@@ -189,11 +192,12 @@ class Bartender(MenuDelegate):
 		return False
 
 	def clean(self):
-		waitTime = 5
+		waitTime = 20
 		pumpThreads = []
 
 		# cancel any button presses while the drink is being made
-		self.stopInterrupts()
+		# self.stopInterrupts()
+		self.running = True
 
 		for pump in self.pump_configuration.keys():
 			pump_t = threading.Thread(target=self.pour, args=(self.pump_configuration[pump]["pin"], waitTime))
@@ -214,7 +218,8 @@ class Bartender(MenuDelegate):
 		self.menuContext.showMenu()
 
 		# reenable interrupts
-		self.startInterrupts()
+		# self.startInterrupts()
+		self.running = False
 
 	def displayMenuItem(self, menuItem):
 		print menuItem.name
@@ -271,7 +276,8 @@ class Bartender(MenuDelegate):
 
 	def makeDrink(self, drink, ingredients):
 		# cancel any button presses while the drink is being made
-		self.stopInterrupts()
+		# self.stopInterrupts()
+		self.running = True
 
 		# launch a thread to control lighting
 		lightsThread = threading.Thread(target=self.cycleLights)
@@ -311,13 +317,16 @@ class Bartender(MenuDelegate):
 		self.lightsEndingSequence()
 
 		# reenable interrupts
-		self.startInterrupts()
+		# self.startInterrupts()
+		self.running = False
 
 	def left_btn(self, ctx):
-		self.menuContext.advance()
+		if not self.running:
+			self.menuContext.advance()
 
 	def right_btn(self, ctx):
-		self.menuContext.select()
+		if not self.running:
+			self.menuContext.select()
 
 	def updateProgressBar(self, percent, x=15, y=15):
 		height = 10
@@ -342,6 +351,8 @@ class Bartender(MenuDelegate):
 		except KeyboardInterrupt:  
 			GPIO.cleanup()       # clean up GPIO on CTRL+C exit  
 		GPIO.cleanup()           # clean up GPIO on normal exit 
+
+		traceback.print_exc()
 
 
 bartender = Bartender()
