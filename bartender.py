@@ -217,6 +217,9 @@ class Bartender(MenuDelegate):
 		# show the main menu
 		self.menuContext.showMenu()
 
+		# sleep for a couple seconds to make sure the interrupts don't get triggered
+		time.sleep(2);
+
 		# reenable interrupts
 		# self.startInterrupts()
 		self.running = False
@@ -315,6 +318,9 @@ class Bartender(MenuDelegate):
 
 		# show the ending sequence lights
 		self.lightsEndingSequence()
+
+		# sleep for a couple seconds to make sure the interrupts don't get triggered
+		time.sleep(2);
 
 		# reenable interrupts
 		# self.startInterrupts()
